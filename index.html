@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c2440">
+<title>ねこならべ</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐈‍⬛</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-screen="screenAuth">
+
+<!-- 背景：Google Earth Studio ループ動画（読めなければ夜空グラデーション） -->
+<div class="bg-sky" aria-hidden="true"></div>
+<video id="bgVideo" class="bg-video" muted loop playsinline autoplay aria-hidden="true"></video>
+<div class="bg-veil" aria-hidden="true"></div>
+
+<main id="app">
+
+  <!-- ===== ログイン / 登録 ===== -->
+  <section id="screenAuth" class="screen active">
+    <div class="auth-wrap">
+      <h1 class="title">
+        <span class="title-cat" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><path d="M11 24 L14 5 L27 15 Q32 14 37 15 L50 5 L53 24 Q58 32 55 42 Q50 57 32 57 Q14 57 9 42 Q6 32 11 24Z" fill="#2b2233"/><ellipse cx="23" cy="34" rx="5" ry="5.5" fill="#ffd23f"/><ellipse cx="41" cy="34" rx="5" ry="5.5" fill="#ffd23f"/><ellipse cx="23" cy="34" rx="1.8" ry="4" fill="#2b2233"/><ellipse cx="41" cy="34" rx="1.8" ry="4" fill="#2b2233"/><path d="M29.5 42 L34.5 42 L32 45Z" fill="#f4a9b8"/></svg>
+        </span>
+        ねこならべ
+      </h1>
+      <p class="tagline">8匹の猫を、けんかしないように並べよう</p>
+
+      <div class="panel auth-card">
+        <div class="auth-tabs" role="tablist">
+          <button type="button" class="auth-tab active" data-panel="login" role="tab">ログイン</button>
+          <button type="button" class="auth-tab" data-panel="register" role="tab">新規登録</button>
+        </div>
+
+        <form id="formLogin" class="auth-form" autocomplete="on">
+          <div id="panel-login">
+            <label class="field">メールアドレス
+              <input id="loginEmail" type="email" autocomplete="email" inputmode="email" required>
+            </label>
+            <label class="field">パスワード
+              <span class="pw-field">
+                <input id="loginPassword" type="password" autocomplete="current-password" required>
+                <button type="button" class="eye" aria-label="パスワードを表示"></button>
+              </span>
+            </label>
+            <button id="btnLogin" type="submit" class="btn primary wide">ログイン</button>
+            <button id="linkForgot" type="button" class="link">パスワードを忘れた</button>
+          </div>
+        </form>
+
+        <form id="formRegister" class="auth-form">
+          <div id="panel-register" hidden>
+            <p class="note">登録したメールアドレスに仮パスワードが届きます。初回ログイン時に本パスワードへ変更します。</p>
+            <label class="field">メールアドレス
+              <input id="regEmail" type="email" autocomplete="email" inputmode="email" required>
+            </label>
+            <button id="btnRegister" type="submit" class="btn primary wide">仮パスワードを受け取る</button>
+          </div>
+        </form>
+
+        <form id="formReset" class="auth-form">
+          <div id="panel-reset" hidden>
+            <p class="note">登録済みのメールアドレスに、新しい仮パスワードを送ります。</p>
+            <label class="field">メールアドレス
+              <input id="resetEmail" type="email" autocomplete="email" inputmode="email" required>
+            </label>
+            <button id="btnReset2" type="submit" class="btn primary wide">仮パスワードを再発行</button>
+            <button id="linkBackLogin" type="button" class="link">ログインに戻る</button>
+          </div>
+        </form>
+
+        <p id="authMsg" class="msg" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ステージ選択 ===== -->
+  <section id="screenStages" class="screen">
+    <header class="topbar">
+      <div class="brand">ねこならべ</div>
+      <button type="button" class="icon-btn" data-open-settings aria-label="設定">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </header>
+    <div class="stages-head">
+      <h2>ステージを選ぶ</h2>
+      <p id="clearedCount" class="sub"></p>
+      <p id="userEmail" class="sub small"></p>
+    </div>
+    <div id="stageGrid" class="stage-grid"></div>
+  </section>
+
+  <!-- ===== ゲーム ===== -->
+  <section id="screenGame" class="screen">
+    <header class="topbar">
+      <button id="btnBackStages" type="button" class="icon-btn" aria-label="ステージ選択へ戻る">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="brand"><span id="stageLabel">ステージ 1</span></div>
+      <button type="button" class="icon-btn" data-open-settings aria-label="設定">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+      </button>
+    </header>
+
+    <div class="game-wrap">
+      <div class="status">
+        <div class="counter" aria-label="配置した猫の数"><span class="paw-ico" aria-hidden="true">🐾</span><span id="catCounter">0/8</span></div>
+        <div id="timer" class="timer" aria-label="経過時間">00:00</div>
+        <div id="lives" class="lives" aria-label="残りミス許容数"></div>
+      </div>
+
+      <ul class="rules" aria-label="ルール">
+        <li>各色に1匹</li>
+        <li>縦・横に1匹ずつ</li>
+        <li>猫どうしは隣接禁止</li>
+      </ul>
+
+      <div class="board-frame">
+        <div id="board" class="board" role="grid" aria-label="パズル盤面"></div>
+        <div id="boardLoading" class="board-loading" hidden>問題を用意しています…</div>
+      </div>
+
+      <p class="tap-guide">1回タップで ×　2回で 猫　3回で 空白</p>
+
+      <div class="controls">
+        <button id="btnUndo" type="button" class="btn ghost">ひとつ戻す</button>
+        <button id="btnHint" type="button" class="btn hint">ヒント</button>
+        <button id="btnReset" type="button" class="btn ghost">まっさらに</button>
+      </div>
+
+      <div id="hintBubble" class="hint-bubble" hidden role="status" aria-live="polite">
+        <div class="hint-avatar" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><path d="M11 24 L14 5 L27 15 Q32 14 37 15 L50 5 L53 24 Q58 32 55 42 Q50 57 32 57 Q14 57 9 42 Q6 32 11 24Z" fill="#e9a35f"/><path d="M14 30 Q20 26 22 34 M50 30 Q44 26 42 34" stroke="#fff" stroke-width="3" fill="none"/><ellipse cx="23" cy="35" rx="4" ry="4.5" fill="#2b2233"/><ellipse cx="41" cy="35" rx="4" ry="4.5" fill="#2b2233"/><path d="M29.5 42 L34.5 42 L32 45Z" fill="#f4a9b8"/></svg>
+        </div>
+        <div class="hint-body">
+          <div class="hint-name">ミケ先生</div>
+          <p id="hintText"></p>
+        </div>
+        <button id="hintClose" type="button" class="hint-close" aria-label="ヒントを閉じる">×</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ===== モーダル：初回パスワード変更（閉じられない） ===== -->
+<div id="modalChangePw" class="modal" hidden>
+  <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+    <h2 id="pwTitle">本パスワードを設定</h2>
+    <p class="note">仮パスワードでログインしました。続けるには新しいパスワードを設定してください（英字と数字を含む8文字以上）。</p>
+    <form id="formChangePw">
+      <label class="field">新しいパスワード
+        <span class="pw-field">
+          <input id="newPw" type="password" autocomplete="new-password" required>
+          <button type="button" class="eye" aria-label="パスワードを表示"></button>
+        </span>
+      </label>
+      <label class="field">もう一度入力
+        <span class="pw-field">
+          <input id="newPw2" type="password" autocomplete="new-password" required>
+          <button type="button" class="eye" aria-label="パスワードを表示"></button>
+        </span>
+      </label>
+      <button id="btnChangePw" type="submit" class="btn primary wide">パスワードを変更してはじめる</button>
+      <p id="pwMsg" class="msg" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ===== モーダル：設定 ===== -->
+<div id="modalSettings" class="modal" hidden>
+  <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">設定</h2>
+    <label class="switch-row">
+      <span>自動で×を表示<small>猫を置くと、同じ行・列と周りのマスに薄い×が出ます</small></span>
+      <input id="setAutoX" type="checkbox" class="switch">
+    </label>
+    <label class="switch-row">
+      <span>音声・効果音</span>
+      <input id="setSound" type="checkbox" class="switch">
+    </label>
+    <button id="btnHowto" type="button" class="btn ghost wide">遊び方</button>
+    <div class="set-meta">
+      <span id="setEmail"></span>
+      <span>バージョン <b id="setVersion"></b></span>
+    </div>
+    <div class="modal-actions">
+      <button id="btnLogout" type="button" class="btn danger">ログアウト</button>
+      <button type="button" class="btn primary" data-close="modalSettings">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== モーダル：遊び方 ===== -->
+<div id="modalHowto" class="modal" hidden>
+  <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="howTitle">
+    <h2 id="howTitle">遊び方</h2>
+    <ol class="howto">
+      <li>8×8のマスに、猫を8匹置きます。</li>
+      <li>どの行にも、どの列にも、猫は1匹ずつ。</li>
+      <li>同じ色のブロックにも、猫は1匹ずつ。</li>
+      <li>猫どうしは、ななめも含めて隣り合えません。</li>
+      <li>間違ったマスに猫を置くと、お魚が1匹減ります。3匹なくなると失敗です。</li>
+    </ol>
+    <p class="note">「ここには置けない」と思ったマスは1回タップで×を付けておくと、考えやすくなります。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn primary" data-close="modalHowto">わかった</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== モーダル：クリア（Earth Studio 動画背景） ===== -->
+<div id="modalClear" class="modal clear-modal" hidden>
+  <video id="clearVideo" class="clear-video" muted loop playsinline aria-hidden="true"></video>
+  <div class="modal-card panel clear-card" role="dialog" aria-modal="true" aria-labelledby="clearStage">
+    <div class="clear-cats" aria-hidden="true">🐈‍⬛🐈🐈‍⬛</div>
+    <h2 id="clearStage">クリア！</h2>
+    <dl class="clear-stats">
+      <div><dt>タイム</dt><dd id="clearTime">00:00</dd></div>
+      <div><dt>ミス</dt><dd id="clearMiss">0回</dd></div>
+    </dl>
+    <p id="clearPraise" class="praise"></p>
+    <div class="modal-actions">
+      <button id="btnToStages" type="button" class="btn ghost">ステージ一覧</button>
+      <button id="btnNext" type="button" class="btn primary">次のステージ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== モーダル：ゲームオーバー ===== -->
+<div id="modalGameOver" class="modal" hidden>
+  <div class="modal-card panel" role="dialog" aria-modal="true" aria-labelledby="goTitle">
+    <h2 id="goTitle">お魚がなくなりました</h2>
+    <p class="note">同じ問題にもう一度挑戦できます。</p>
+    <div class="modal-actions">
+      <button id="btnGoStages" type="button" class="btn ghost">ステージ一覧</button>
+      <button id="btnRetry" type="button" class="btn primary">もう一度</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="version" class="version-badge"></div>
+
+<script src="js/config.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/api.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/puzzle.js"></script>
+<script src="js/game.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
