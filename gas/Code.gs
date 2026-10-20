@@ -7,16 +7,35 @@
  *   GEMINI_TTS_MODEL … 任意（既定: gemini-2.5-flash-preview-tts）
  *   TTS_VOICE        … 任意（既定: Leda）
  *   SHEET_ID / DRIVE_FOLDER_ID … setup() が自動で設定
+ *   HUB_SSO_SECRET   … RETRO ARCADE HUB 連携用（ハブのGASで setupSsoSecret() を実行して
+ *                      表示された値と同じものを設定）。未設定ならハブ連携は無効
+ *
+ * RETRO ARCADE HUB 連携：
+ *   ハブでログイン済みの会員は、ハブが発行した入場チケット（HMAC署名・2分有効・使い捨て）を
+ *   URLの #hub=… で受け取り、パスワードなしでログインできる。
+ *   ・正規会員（メールあり）… 同じメールの会員がいればその会員として、いなければ新規作成
+ *   ・お試し会員（メールなし）… 「hub:会員番号」を識別子として新規作成
+ *   ハブ経由で作られた会員の status は 'hub'（パスワード未設定）。
+ *   パスワードでも入りたい場合は「パスワード再発行」で設定できる（メールありのみ）。
  *
  * 初回: エディタで setup() を実行 → デプロイ（ウェブアプリ / 実行: 自分 / アクセス: 全員）
  */
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const APP_NAME = 'ねこならべ';
 const TOKEN_DAYS = 30;
 const MAX_FAIL = 5;
 const LOCK_MINUTES = 15;
 const PROPS = PropertiesService.getScriptProperties();
+
+// RETRO ARCADE HUB 連携（シングルサインオン）
+const HUB_SSO = {
+  aud: 'nekonarabe',        // ハブ側 SSO_GAMES の値と一致させる
+  noncePrefix: 'hubnonce_', // 使い捨てチェック用（CacheService）
+  nonceSec: 600,
+  idPrefix: 'hub:',         // メールのないハブ会員の識別子（例：hub:m0001）
+  maxClockSkewMs: 300000    // 発行時刻が未来すぎるチケットは拒否
+};
 
 const USER_HEADERS = ['email', 'passHash', 'salt', 'status', 'token', 'tokenExpires', 'createdAt', 'lastLogin', 'failCount', 'lockedUntil'];
 const RESULT_HEADERS = ['email', 'stage', 'bestMs', 'mistakes', 'clearCount', 'updatedAt'];
@@ -75,6 +94,7 @@ function doPost(e) {
 const HANDLERS = {
   register: register_,
   login: login_,
+  hubLogin: hubLogin_,
   verify: verify_,
   changePassword: changePassword_,
   resetPassword: resetPassword_,
@@ -155,8 +175,15 @@ function requireUser_(req) {
 
 function requireActive_(req) {
   const u = requireUser_(req);
-  if (u.data.status !== 'active') throw apiError_('パスワードの変更が必要です', 'AUTH');
+  // 'active'＝通常会員、'hub'＝アーケードハブ経由の会員（パスワード未設定）
+  if (u.data.status !== 'active' && u.data.status !== 'hub') throw apiError_('パスワードの変更が必要です', 'AUTH');
   return u;
+}
+
+function issueToken_(u) {
+  u.token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  u.tokenExpires = new Date(Date.now() + TOKEN_DAYS * 86400000);
+  u.lastLogin = new Date();
 }
 
 // ================= 認証 =================
@@ -167,7 +194,7 @@ function register_(req) {
   lock.waitLock(10000);
   try {
     const found = findUser_(email);
-    if (found && found.data.status === 'active') {
+    if (found && (found.data.status === 'active' || found.data.status === 'hub')) {
       throw apiError_('このメールアドレスは登録済みです。パスワードを忘れた場合は再発行してください');
     }
     const temp = tempPassword_();
@@ -191,6 +218,7 @@ function login_(req) {
   if (u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now()) {
     throw apiError_(`ログインに続けて失敗したため、${LOCK_MINUTES}分間ロックしています`);
   }
+  if (!u.passHash) throw apiError_('この会員は RETRO ARCADE HUB 経由でご利用ください。パスワードでログインしたい場合は「パスワード再発行」から設定できます');
   if (hash_(u.salt, String(req.password || '')) !== u.passHash) {
     u.failCount = Number(u.failCount || 0) + 1;
     if (u.failCount >= MAX_FAIL) {
@@ -201,11 +229,75 @@ function login_(req) {
     throw apiError_('メールアドレスまたはパスワードが違います');
   }
   u.failCount = 0; u.lockedUntil = '';
-  u.token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
-  u.tokenExpires = new Date(Date.now() + TOKEN_DAYS * 86400000);
-  u.lastLogin = new Date();
+  issueToken_(u);
   writeUser_(found.row, u);
   return { token: u.token, email: u.email, status: u.status };
+}
+
+// ================= RETRO ARCADE HUB 連携 =================
+// チケット形式：base64url(JSON本文) + '.' + base64url(HMAC-SHA256(本文, HUB_SSO_SECRET))
+function hubLogin_(req) {
+  const secret = PROPS.getProperty('HUB_SSO_SECRET');
+  if (!secret) throw apiError_('アーケードハブ連携の設定（HUB_SSO_SECRET）が未設定です');
+
+  const parts = String(req.ticket || '').split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw apiError_('入場チケットが正しくありません。アーケードハブからもう一度開いてください');
+  const expected = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(parts[0], secret));
+  if (!safeEqual_(expected, parts[1])) throw apiError_('入場チケットが正しくありません。アーケードハブからもう一度開いてください');
+
+  let p;
+  try {
+    p = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString('UTF-8'));
+  } catch (err) {
+    throw apiError_('入場チケットを読み取れませんでした');
+  }
+  const now = Date.now();
+  if (p.aud !== HUB_SSO.aud) throw apiError_('このゲーム用の入場チケットではありません');
+  if (!(Number(p.exp) > now)) throw apiError_('入場チケットの有効期限が切れました。アーケードハブからもう一度開いてください');
+  if (Number(p.iat) > now + HUB_SSO.maxClockSkewMs) throw apiError_('入場チケットの時刻が正しくありません');
+  const mid = String(p.mid || '').replace(/[^A-Za-z0-9]/g, '');
+  if (!mid || !p.nonce) throw apiError_('入場チケットが正しくありません');
+
+  // 使い捨て：同じチケットの再利用を防ぐ
+  const cache = CacheService.getScriptCache();
+  const nonceKey = HUB_SSO.noncePrefix + String(p.nonce).replace(/[^A-Za-z0-9]/g, '').slice(0, 64);
+  if (cache.get(nonceKey)) throw apiError_('この入場チケットは使用済みです。アーケードハブからもう一度開いてください');
+  cache.put(nonceKey, '1', HUB_SSO.nonceSec);
+
+  const mail = normEmail_(p.email);
+  const key = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) ? mail : normEmail_(HUB_SSO.idPrefix + mid);
+  const nickname = String(p.nick || '').trim().slice(0, 20);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    let found = findUser_(key);
+    let u;
+    if (found) {
+      u = found.data;
+      // 仮パスワードのまま本パスワード未設定の会員は、ハブ会員として扱う（仮パスワードは無効化）
+      if (u.status !== 'active') { u.status = 'hub'; u.passHash = ''; u.salt = ''; }
+      u.failCount = 0; u.lockedUntil = '';
+    } else {
+      u = {
+        email: key, passHash: '', salt: '', status: 'hub',
+        token: '', tokenExpires: '', createdAt: new Date(), lastLogin: '', failCount: 0, lockedUntil: '',
+      };
+      sheet_('Users').appendRow(USER_HEADERS.map(h => u[h]));
+      found = findUser_(key);
+    }
+    issueToken_(u);
+    writeUser_(found.row, u);
+    return { token: u.token, email: u.email, status: u.status, nickname, viaHub: true };
+  } finally { lock.releaseLock(); }
+}
+
+function safeEqual_(a, b) {
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 function verify_(req) {
@@ -227,6 +319,7 @@ function changePassword_(req) {
 
 function resetPassword_(req) {
   const email = normEmail_(req.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw apiError_('メールアドレスの形式が正しくありません');
   const found = findUser_(email);
   // 登録有無は返さない（なりすまし調査対策）
   if (found) {

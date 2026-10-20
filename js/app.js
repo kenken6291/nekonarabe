@@ -72,7 +72,7 @@ const App = (() => {
     setBusy(btn, true, 'ログイン中…');
     try {
       const r = await Api.call('login', { email, password });
-      Session.set({ token: r.token, email: r.email, status: r.status });
+      Session.set({ token: r.token, email: r.email, status: r.status, viaHub: false });
       $('loginPassword').value = '';
       afterAuth(r.status);
     } catch (err) { msg('authMsg', err.message); }
@@ -126,6 +126,43 @@ const App = (() => {
     finally { setBusy(btn, false); }
   }
 
+  // 画面に出す会員名（ハブのお試し会員は内部IDではなくニックネームを表示）
+  function displayName(sess) {
+    if (!sess) return '';
+    const isHubId = /^hub:/.test(sess.email || '');
+    if (sess.viaHub || sess.status === 'hub') {
+      const who = sess.nickname || (isHubId ? '' : sess.email);
+      return 'RETRO ARCADE HUB会員' + (who ? '（' + who + '）' : '');
+    }
+    return sess.email || '';
+  }
+
+  // ---------- RETRO ARCADE HUB 連携 ----------
+  // URLの #hub=... から入場チケットを取り出し、URLからは消す（履歴・共有に残さない）
+  function takeHubTicket() {
+    const m = /(?:^#|&)hub=([^&]+)/.exec(location.hash || '');
+    if (!m) return '';
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+    try { return decodeURIComponent(m[1]); } catch (e) { return ''; }
+  }
+
+  async function hubLogin(ticket) {
+    showScreen('screenAuth');
+    showAuthPanel('login');
+    msg('authMsg', 'RETRO ARCADE HUB の会員情報でログインしています…', false);
+    try {
+      const r = await Api.call('hubLogin', { ticket });
+      Session.set({ token: r.token, email: r.email, status: r.status, nickname: r.nickname || '', viaHub: true });
+      msg('authMsg', '');
+      toast('RETRO ARCADE HUB の会員としてログインしました');
+      afterAuth(r.status);
+      return true;
+    } catch (err) {
+      msg('authMsg', err.message);
+      return false;
+    }
+  }
+
   function afterAuth(status) {
     if (status === 'temporary') {
       msg('pwMsg', '');
@@ -147,7 +184,7 @@ const App = (() => {
   // ---------- ステージ選択 ----------
   async function enterStages() {
     const s = Session.get();
-    $('userEmail').textContent = s ? s.email : '';
+    $('userEmail').textContent = displayName(s);
     showScreen('screenStages');
     renderStages();
     try {
@@ -225,7 +262,7 @@ const App = (() => {
     $('setAutoX').checked = Settings.get('autoX');
     $('setSound').checked = Settings.get('sound');
     const s = Session.get();
-    $('setEmail').textContent = s ? s.email : '';
+    $('setEmail').textContent = displayName(s);
     openModal('modalSettings');
   }
 
@@ -263,12 +300,20 @@ const App = (() => {
       msg('authMsg', 'ログインの有効期限が切れました。もう一度ログインしてください');
     });
 
+    // アーケードハブから来た場合は、入場チケットで自動ログイン（失敗時はログイン画面のまま）
+    const hubTicket = takeHubTicket();
+    if (hubTicket) {
+      Session.clear();
+      await hubLogin(hubTicket);
+      return;
+    }
+
     // セッション復元
     const s = Session.get();
     if (s && s.token) {
       try {
         const r = await Api.call('verify');
-        Session.set({ token: s.token, email: r.email, status: r.status });
+        Session.set(Object.assign({}, s, { email: r.email, status: r.status }));
         afterAuth(r.status);
         return;
       } catch (e) { /* 無効なら下でログイン画面 */ }

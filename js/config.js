@@ -4,7 +4,7 @@
  */
 window.APP_CONFIG = {
   APP_NAME: 'ねこならべ',
-  VERSION: 'v1.0.0',
+  VERSION: 'v1.1.0',
 
   // GAS Web アプリの URL（デプロイ → ウェブアプリ → URL）
   GAS_API_URL: 'https://script.google.com/macros/s/AKfycbw_TvouKo-t0UXyHv5-iAGmQOLOBgVgITNgaKGqXGOr4Jk1SIdRhJezHeBpfENaXTPaMg/exec',
